@@ -47,11 +47,12 @@ class Image2DReader:
             data = self.proc.data_ndarray() # 1D data (for all batch size)
             label = self.proc.labels()
             outimg = np.zeros( (self.vecshape,), dtype=np.float32 )
-            outlabel = np.zeros( (1,), dtype=np.int32 )
             outimg = data
+            outimg = np.transpose( outimg.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
+            outlabel = np.zeros( (1,), dtype=np.int32 )
             outlabel[0] = label.at(0)
             print "Ask process driver for batch",outlabel[0]
-            self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg,self.ph_label:outlabel[0]} )
+            self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg.flatten(),self.ph_label:outlabel[0]} )
 
     def defineSubNetwork(self):
         # get dimensions of data

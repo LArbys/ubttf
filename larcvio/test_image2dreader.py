@@ -24,17 +24,19 @@ if __name__ == "__main__":
     with tf.name_scope('image_dump'):
 
         # reshape
-        reshaped_imgs = tf.reshape( feature_batch, [reader.batch_size,reader.nchs,reader.rows,reader.cols] )
+        #reshaped_imgs = tf.reshape( feature_batch, [reader.batch_size,reader.nchs,reader.rows,reader.cols] )
+        reshaped_imgs = tf.reshape( feature_batch, [reader.batch_size,reader.rows,reader.cols,reader.nchs] )
 
         # permute (slow)
-        permute_imgs = tf.transpose( reshaped_imgs, perm=[0,2,3,1] )
+        #permute_imgs = tf.transpose( reshaped_imgs, perm=[0,2,3,1] )
 
         # split labels
         split_labels = tf.split( 0, reader.batch_size, label_batch )
 
         # summaries
         for plane in planes:
-            tf.image_summary( 'plane%d_img'%(plane), permute_imgs, max_images=reader.batch_size )
+            #tf.image_summary( 'plane%d_img'%(plane), permute_imgs, max_images=reader.batch_size )
+            tf.image_summary( 'plane%d_img'%(plane), reshaped_imgs, max_images=reader.batch_size )
         #for ibatch in range(0,reader.batch_size):
         #    tf.scalar_summary( "sum_label_%d"%(ibatch), split_labels[ibatch] )
 
@@ -58,9 +60,9 @@ if __name__ == "__main__":
             #print imgs.shape, labels.shape, labels
 
             if summary_ops is not None:
-                out_reshape, sum_event, labels = tfsession.run( [permute_imgs,summary_ops,label_batch] )
+                out_reshape, sum_event, labels = tfsession.run( [reshaped_imgs,summary_ops,label_batch] )
             else:
-                out_reshape,labels = tfsession.run( [permute_imgs,label_batch] )
+                out_reshape,labels = tfsession.run( [reshaped_imgs,label_batch] )
             print "output shape: ",out_reshape.shape
             print "output labels: ",labels
             if summary_ops is not None:
