@@ -97,3 +97,11 @@ class Image2DReader:
         if not hasattr(self, 'label_batch'):
             raise RuntimeError("Must call startQueue first for label_batch to be created")
         return self.label_batch
+
+    def get_image_shape(self,order='HWC'):
+        if order=='HWC':
+            return (self.rows,self.cols,self.nchs)
+        elif order=='CHW':
+            return (self.nchs,self.rows,self.cols)
+        else:
+            raise ValueError('order must be \'HWC\' or \'CHW\'')
