@@ -134,6 +134,7 @@ if __name__=="__main__":
             print "output shape: ",out_reshape.shape
             summary_writer.add_summary( sum_event )
 
+            # double check by outputing images
             for ibatch in range(0,batch_size):
                 imgout = out_reshape[ibatch,:,:,:]*100.0
                 print "write out image ",ibatch
