@@ -35,8 +35,8 @@ if __name__ == "__main__":
         # summaries
         for plane in planes:
             tf.image_summary( 'plane%d_img'%(plane), permute_imgs, max_images=reader.batch_size )
-        for ibatch in range(0,reader.batch_size):
-            tf.scalar_summary( "sum_label_%d"%(ibatch), split_labels[ibatch][0] )
+        #for ibatch in range(0,reader.batch_size):
+        #    tf.scalar_summary( "sum_label_%d"%(ibatch), split_labels[ibatch] )
 
     # Merge summary ops
     summary_ops = tf.merge_all_summaries()
