@@ -31,12 +31,12 @@ class BVLCAlexNetModel:
         assert c_i%group==0
         assert c_o%group==0
 
-        if self.net_data and self.tf_data:
+        if self.net_data is None and self.tf_data is None:
             # from scratch initializer
             initerw = tf.contrib.layers.xavier_initializer_conv2d()
             initerb = tf.constant_initializer(0.1)
-            shapew = [k_h,k_w,c_i,c_o]
-            shapeb = [c_o]
+            shapew = [k_h,k_w,c_i/group,c_o/group]
+            shapeb = [c_o/group]
         elif self.net_data is not None:
             # from imagenet weights initializer
             initerw = lambda shape,dtype : self.net_data[varname][0]
@@ -175,7 +175,8 @@ class BVLCAlexNetModel:
             #fc(4096, name='fc6')
             #fc6W = tf.Variable(self.net_data["fc6"][0])
             #fc6b = tf.Variable(self.net_data["fc6"][1])
-            print "FC6 net_data: ",self.net_data["fc6"][0].shape,self.net_data["fc6"][1].shape
+            if self.net_data is not None:
+                print "FC6 net_data: ",self.net_data["fc6"][0].shape,self.net_data["fc6"][1].shape
             with tf.variable_scope("fc6"):
                 fc6shapew = [int(np.prod(maxpool5.get_shape()[1:])),4096]
                 fc6shapeb = [4096]

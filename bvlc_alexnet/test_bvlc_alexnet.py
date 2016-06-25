@@ -14,7 +14,9 @@ if __name__ == "__main__":
     tfsession = tf.Session()
     image_batch_node, label_batch_node = reader.startQueue(tfsession, batch_size)
 
-    model = BVLCAlexNetModel( image_batch_node, label_batch_node, reader.get_image_shape(), num_classes, caffe_weightfile='bvlc_alexnet.npy' )
+    caffe_weightfile = 'bvlc_alexnet.npy'
+    caffe_weightfile = ''
+    model = BVLCAlexNetModel( image_batch_node, label_batch_node, reader.get_image_shape(), num_classes, caffe_weightfile=caffe_weightfile )
     
     # Summary writer
     summ_dir = '/tmp/bvlc_alexnet_test_'+getpass.getuser()
