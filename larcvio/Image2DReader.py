@@ -28,10 +28,7 @@ class Image2DReader:
             self.proc.configure(self.config_file)
         else:
             print "Filler Already Exists"
-        #if len(filelist)>0:
-        #    self.setfilelist( filelist )
-        #self.proc.initialize()
-
+        # maybe should get batch size here and define subnetwork
         #self.defineSubNetwork()
 
     def setfilelist(self, filelist ):
@@ -90,4 +87,12 @@ class Image2DReader:
 
         return self.image_batch, self.label_batch
 
-        
+    def get_image_batch_node(self):
+        if not hasattr(self, 'image_batch'):
+            raise RuntimeError("Must call startQueue first for image batch to be created")
+        return self.image_batch
+
+    def get_label_batch_node(self):
+        if not hasattr(self, 'label_batch'):
+            raise RuntimeError("Must call startQueue first for label_batch to be created")
+        return self.label_batch
