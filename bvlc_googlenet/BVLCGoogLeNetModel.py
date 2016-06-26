@@ -190,6 +190,14 @@ class BVLCGoogLeNetModel:
             i4cchannels = { "1x1":128, "3x3reduce":128, "3x3":256, "5x5reduce":24, "5x5":64, "poolproj":64 }
             incept4c = self._inception( "inception_4c", incept4b, i4cchannels )
 
+            # inception 4D
+            i4dchannels = { "1x1":112, "3x3reduce":144, "3x3":288, "5x5reduce":32, "5x5":64, "poolproj":64 }
+            incept4d = self._inception( "inception_4d", incept4c, i4dchannels )
+
+            # inception 4E
+            i4echannels = { "1x1":256, "3x3reduce":160, "3x3":320, "5x5reduce":32, "5x5":128, "poolproj":128 }
+            incept4e = self._inception( "inception_4e", incept4d, i4echannels )
+
             # inception 5A
             #i5achannels = { "1x1":128, "3x3reduce":128, "3x3":192, "5x5reduce":32, "5x5":96, "poolproj":64 }
             #incept5a = self._inception( "inception_3a", incept3a, i5achannels )
