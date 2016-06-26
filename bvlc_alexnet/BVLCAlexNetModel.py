@@ -19,7 +19,13 @@ class BVLCAlexNetModel:
             self.net_data = np.load(caffe_weightfile).item()
         self.tf_data = None
 
-        self.fc8 = self._defineCoreModel( self.image_batch_node, self.labels_batch_node, scopename )
+        self.fc8 = self._defineCoreModel( self.image_batch_node, scopename )
+
+        with tf.name_scope( scopename ):
+            if self.mode=='test':
+                self.prob = tf.nn.softmax(self.fc8, name="softmaxprob")
+            else:
+                self.loss = tf.nn.softmax_cross_entropy_with_logits( self.fc8, self.labels_batch_node, "softmaxloss" )
 
     def _conv_layer( self, input, varname, k_h, k_w, c_o, s_h, s_w,  padding="VALID", group=1):
         '''From https://github.com/ethereon/caffe-tensorflow
@@ -72,7 +78,7 @@ class BVLCAlexNetModel:
         pass
         
 
-    def _defineCoreModel( self, image_batch_node, labels_batch_node, scopename ):
+    def _defineCoreModel( self, image_batch_node, scopename ):
         """ defines tensor ops for AlexNet. returns last operation."""
         with tf.name_scope( scopename ):
 
@@ -182,12 +188,19 @@ class BVLCAlexNetModel:
             #fc6b = tf.Variable(self.net_data["fc6"][1])
             if self.net_data is not None:
                 print "FC6 net_data: ",self.net_data["fc6"][0].shape,self.net_data["fc6"][1].shape
+            use_netdata_fc = False
             with tf.variable_scope("fc6"):
                 fc6shapew = [int(np.prod(maxpool5.get_shape()[1:])),4096]
                 fc6shapeb = [4096]
-                print fc6shapew, fc6shapeb
-                fc6W = tf.get_variable("weights", shape=fc6shapew, initializer=tf.random_normal_initializer() )
-                fc6b = tf.get_variable("bias", shape=fc6shapeb, initializer=tf.constant_initializer(0.1) )
+                fc6initw = tf.random_normal_initializer()
+                fc6initb = tf.constant_initializer(0.1)
+                if self.net_data is not None and list(self.net_data["fc6"][0].shape)==fc6shapew:
+                    print "FC6: use net_data weights"
+                    fc6initw = lambda shape,dtype : self.net_data["fc6"][0]
+                    fc6initb = lambda shape,dtype : self.net_data["fc6"][1]
+                    use_netdata_fc = True
+                fc6W = tf.get_variable("weights", shape=fc6shapew, initializer=fc6initw)
+                fc6b = tf.get_variable("bias", shape=fc6shapeb, initializer=fc6initb)
                 fc6 = tf.nn.relu_layer(tf.reshape(maxpool5, [-1, int(np.prod(maxpool5.get_shape()[1:]))]), fc6W, fc6b)
             print "FC6 out: ",fc6.get_shape().as_list()
 
@@ -197,8 +210,14 @@ class BVLCAlexNetModel:
             #fc7b = tf.Variable(self.net_data["fc7"][1])
             #fc7 = tf.nn.relu_layer(fc6, fc7W, fc7b)
             with tf.variable_scope("fc7"):
-                fc7W = tf.get_variable("weights", shape=[4096,4096], initializer=tf.random_normal_initializer() )
-                fc7b = tf.get_variable("bias", shape=[4096], initializer=tf.constant_initializer(0.1) )
+                fc7initw = tf.random_normal_initializer()
+                fc7initb = tf.constant_initializer(0.1)
+                if self.net_data is not None and use_netdata_fc:
+                    print "FC7: use net_data caffe weights"
+                    fc7initw = lambda shape,dtype : self.net_data["fc7"][0]
+                    fc7initb = lambda shape,dtype :self.net_data["fc7"][1]
+                fc7W = tf.get_variable("weights", shape=[4096,4096], initializer=fc7initw )
+                fc7b = tf.get_variable("bias", shape=[4096], initializer=fc7initb )
                 fc7 = tf.nn.relu_layer( fc6, fc7W, fc7b)
                                        
 
@@ -208,8 +227,14 @@ class BVLCAlexNetModel:
             #fc8b = tf.Variable(self.net_data["fc8"][1])
             #fc8 = tf.nn.xw_plus_b(fc7, fc8W, fc8b)
             with tf.variable_scope("fc8"):
-                fc8W = tf.get_variable("weights", shape=[4096,self.nclasses], initializer=tf.random_normal_initializer() )
-                fc8b = tf.get_variable("bias", shape=[self.nclasses], initializer=tf.constant_initializer(0.1) )
+                fc8initw = tf.random_normal_initializer()
+                fc8initb = tf.constant_initializer(0.1)
+                if self.net_data is not None and use_netdata_fc:
+                    print "FC8: use net_data caffe weights"
+                    fc8initw = lambda shape,dtype : self.net_data["fc8"][0]
+                    fc8initb = lambda shape,dtype :self.net_data["fc8"][1]
+                fc8W = tf.get_variable("weights", shape=[4096,self.nclasses], initializer=fc8initw )
+                fc8b = tf.get_variable("bias", shape=[self.nclasses], initializer=fc8initb )
                 fc8 = tf.nn.xw_plus_b(fc7, fc8W, fc8b)
             print "FC8 out: ",fc8.get_shape().as_list()
 
