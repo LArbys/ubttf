@@ -89,6 +89,7 @@ class BVLCGoogLeNetModel:
             # pool1/3x3_s2
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'VALID'
             maxpool1 = tf.nn.max_pool(conv1, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool1_3x3_s2')
+            print 
 
             #lrn1
             #lrn(2, 2e-05, 0.75, name='norm1')
@@ -174,13 +175,13 @@ class BVLCGoogLeNetModel:
             i3bchannels = { "1x1":128, "3x3reduce":128, "3x3":192, "5x5reduce":32, "5x5":96, "poolproj":64 }
             incept3b = self._inception( "inception_3b", incept3a, i3bchannels )
 
-            # pool 3b
+            # pool 3
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'VALID'
-            maxpool3b = tf.nn.max_pool(incept3b, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool3_3x3_s2')
+            maxpool3 = tf.nn.max_pool(incept3b, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool3_3x3_s2')
 
             # inception 4A
             i4achannels = { "1x1":160, "3x3reduce":96, "3x3":208, "5x5reduce":16, "5x5":48, "poolproj":64 }
-            incept4a = self._inception( "inception_4a", maxpool3b, i4achannels )
+            incept4a = self._inception( "inception_4a", maxpool3, i4achannels )
 
             # inception 4B
             i4bchannels = { "1x1":160, "3x3reduce":112, "3x3":224, "5x5reduce":24, "5x5":64, "poolproj":64 }
@@ -198,14 +199,23 @@ class BVLCGoogLeNetModel:
             i4echannels = { "1x1":256, "3x3reduce":160, "3x3":320, "5x5reduce":32, "5x5":128, "poolproj":128 }
             incept4e = self._inception( "inception_4e", incept4d, i4echannels )
 
+            # pool4
+            k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'VALID'
+            maxpool4 = tf.nn.max_pool(incept4e, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool4_3x3_s2')
+            
+
             # inception 5A
-            #i5achannels = { "1x1":128, "3x3reduce":128, "3x3":192, "5x5reduce":32, "5x5":96, "poolproj":64 }
-            #incept5a = self._inception( "inception_3a", incept3a, i5achannels )
+            i5achannels = { "1x1":384, "3x3reduce":192, "3x3":384, "5x5reduce":48, "5x5":128, "poolproj":128 }
+            incept5a = self._inception( "inception_5a", maxpool4, i5achannels )
 
-            # inception 5B
-            #i5bchannels = { "1x1":128, "3x3reduce":128, "3x3":192, "5x5reduce":32, "5x5":96, "poolproj":64 }
-            #incept5b = self._inception( "inception_3a", incept3a, i5bchannels )
+            # pool 5
+            k_h = 7; k_w = 7; s_h = 1; s_w = 1; padding = 'VALID'
+            pool5 = tf.nn.avg_pool(incept5a, ksize=[1,k_h,k_w,1], strides=[1, s_h, s_w, 1], padding=padding, name="pool5_7x7_s1")
 
-            return incept4c
+            # dropout
+            keep_prob = 0.4
+            dropout5 = tf.nn.dropout( pool5, keep_prob, name="pool5_drop_7x7_s1")
+
+            return dropout
 
 
