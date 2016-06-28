@@ -74,8 +74,7 @@ class Image2DReader:
             if self.loadflat:
                 self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg.flatten(),self.ph_label:outlabel[0]} )
             else:
-                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg,self.ph_label:outlabel[0]} )
-                
+                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg,self.ph_label:outlabel[0]} )                
 
     def defineSubNetwork(self):
 

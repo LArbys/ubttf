@@ -13,7 +13,7 @@ if __name__ == "__main__":
 
     # setup iageread network
 
-    batch_size = 4
+    batch_size = 16
     num_classes = 2
 
     # Create Process Driver Reader
@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
     # Do initialization
     start_init = time.time()
-    #tfsession.run( init_op )
+    tfsession.run( init_op )
     print "Initialized in ",time.time()-start_init
 
     # Start the queue
@@ -62,21 +62,30 @@ if __name__ == "__main__":
     #print "initial conv1b values: ",conv1b_init
     #print model.net_data["conv1"][1]
 
-    # Forward pass on image
-    #start_forward = time.time()
-    #feed = { image_input_node:net_input, label_input_node:net_label }
-    #prob1,prob2,prob3 = tfsession.run( [model.softmax1,model.softmax2,model.softmax3], feed_dict=feed )
+    npasses = 100
 
-    #totprob = (0.3*prob1 + 0.3*prob2 + 1.0*prob3)/1.6
-    #totprob = prob3
+    start_forward = time.time()
+    for istep in range(0,npasses):
 
-    # How did we do? (stupidest top-K algorithm)
-    #print "Ran one sample in ",time.time()-start_forward
-    #for ibatch in range(0,batch_size):
-    #    print "Image ",ibatch," of batch size ",batch_size
-    #    for k in range(0,5):
-    #        maxk = np.argmax( totprob[ibatch] )
-    #        maxprob = totprob[ibatch][maxk]
-    #        print "Top ",k,": index=",maxk," ",class_names[maxk]," prob=",maxprob
-    #        totprob[ibatch][maxk] = 0
+        # Forward pass on image
+
+        prob1,prob2,prob3,labels = tfsession.run( [model.softmax1,model.softmax2,model.softmax3,label_input_node] )
+
+        #totprob = (0.3*prob1 + 0.3*prob2 + 1.0*prob3)/1.6
+        totprob = prob3
+
+        # How did we do? (stupidest top-K algorithm)
+        #print "Ran one sample in ",time.time()-start_forward
+        print "[Step ",istep,"]"
+        for ibatch in range(0,batch_size):
+            print totprob[ibatch],labels[ibatch]
+        #    print "Image ",ibatch," of batch size ",batch_size
+        #    for k in range(0,5):
+        #        maxk = np.argmax( totprob[ibatch] )
+        #        maxprob = totprob[ibatch][maxk]
+        #        print "Top ",k,": index=",maxk," ",class_names[maxk]," prob=",maxprob
+        #        totprob[ibatch][maxk] = 0
+    end_forward = time.time()
     
+    print "pass rate: ",(end_forward-start_forward)/float(npasses*reader.batch_size)," secs per event"
+
