@@ -6,7 +6,7 @@ import threading
 
 class Image2DReader:
     """Class that provides image data to TensorFlow Models. Tailored to classificaion."""
-    def __init__(self,drivername,cfg,filelist=[]):
+    def __init__(self,drivername,cfg,batch_size,filelist=[],loadflat=False):
         """
         constructor
 
@@ -18,6 +18,9 @@ class Image2DReader:
         # check variable types
         assert type(drivername) is str
         assert type(cfg) is str
+        assert type(batch_size) is int
+        self.loadflat = loadflat
+        self.batch_size = batch_size
 
         # setup process driver
         self.config_file = cfg
@@ -28,8 +31,12 @@ class Image2DReader:
             self.proc.configure(self.config_file)
         else:
             print "Filler Already Exists"
-        # maybe should get batch size here and define subnetwork
-        #self.defineSubNetwork()
+
+        self.get_image_attributes()
+        self.defineSubNetwork()
+        print "Image2DReader network defined. Get image and lable Tensor variables via:"
+        print " images: get_image_batch_node()"
+        print " labels: get_label_batch_node()"
 
     def setfilelist(self, filelist ):
         assert filelist is list
@@ -38,6 +45,16 @@ class Image2DReader:
         # re-initialize
         self.proc.initialize()
 
+    def get_image_attributes(self):
+        self.proc.set_next_index(0)
+        self.proc.batch_process( 1 )
+        dims = self.proc.dim()
+        self.nchs = dims.at(1)
+        self.rows = dims.at(2)
+        self.cols = dims.at(3)
+        self.vecshape = self.nchs*self.rows*self.cols
+        self.proc.set_next_index(0)
+        
     def load_data_worker( self ):
         # at start we need image shape size, process first image
         # start from beginning
@@ -46,28 +63,30 @@ class Image2DReader:
             self.proc.batch_process( 1 ) #self.batch_size )
             data = self.proc.data_ndarray() # 1D data (for all batch size)
             label = self.proc.labels()
-            outimg = np.zeros( (self.vecshape,), dtype=np.float32 )
+            #outimg = np.zeros( (self.vecshape,), dtype=np.float32 )
+            #outimg = data # copy
+            #outimg = np.transpose( outimg.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
+            data = np.transpose( data.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
             outimg = data
-            outimg = np.transpose( outimg.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
             outlabel = np.zeros( (1,), dtype=np.float32 )
             outlabel[0] = label.at(0)
             print "Ask process driver for batch",outlabel[0]
-            self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg.flatten(),self.ph_label:outlabel[0]} )
+            if self.loadflat:
+                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg.flatten(),self.ph_label:outlabel[0]} )
+            else:
+                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg,self.ph_label:outlabel[0]} )
+                
 
     def defineSubNetwork(self):
-        # get dimensions of data
-        self.proc.batch_process(1)
-        dims = self.proc.dim()
-        self.nchs = dims.at(1)
-        self.rows = dims.at(2)
-        self.cols = dims.at(3)
-        self.vecshape = self.nchs*self.rows*self.cols
 
         # setup network
         with tf.name_scope('image2dreader'):
-            self.ph_image = tf.placeholder(tf.float32, shape=[self.vecshape], name="Image")
+            if self.loadflat:
+                self.ph_image = tf.placeholder(tf.float32, shape=[self.vecshape], name="Image")
+            else:
+                self.ph_image = tf.placeholder(tf.float32, shape=[self.rows,self.cols,self.nchs], name="Image")
             self.ph_label = tf.placeholder(tf.float32, shape=[],name="Label")
-            self.example_queue = tf.FIFOQueue( capacity=3*self.batch_size, dtypes=[tf.float32, tf.float32], shapes=[[self.vecshape], []] )
+            self.example_queue = tf.FIFOQueue( capacity=3*self.batch_size, dtypes=[tf.float32, tf.float32], shapes=[[self.rows,self.cols,self.nchs], []] )
             self.enqueue_op = self.example_queue.enqueue([self.ph_image, self.ph_label])
             self.image_batch, self.label_batch = self.example_queue.dequeue_many(self.batch_size)
 
@@ -78,9 +97,8 @@ class Image2DReader:
         """
         # store pointers
         self.tfsession = tfsession
-        self.batch_size = batch_size
-
-        self.defineSubNetwork()
+        #self.batch_size = batch_size
+        #self.defineSubNetwork()
 
         self.worker_thread = threading.Thread( target=self.load_data_worker )
         self.worker_thread.daemon = True

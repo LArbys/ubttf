@@ -13,18 +13,22 @@ if __name__ == "__main__":
     batch_size = 4
 
     # Create Process Driver Reader
-    reader = Image2DReader("train","filler.cfg")
+    reader = Image2DReader("train","filler.cfg",batch_size)
     
-    tfsession = tf.Session()
-    feature_batch, label_batch = reader.startQueue(tfsession, batch_size)
 
-    print [reader.batch_size,reader.cols,reader.rows,reader.nchs]
+    feature_batch = reader.get_image_batch_node()
+    label_batch   = reader.get_label_batch_node()
+
+    print "Image Batch Shape: ",[reader.batch_size,reader.cols,reader.rows,reader.nchs]
 
     # Image dump network
     with tf.name_scope('image_dump'):
 
         # reshape
-        reshaped_imgs = tf.reshape( feature_batch, [reader.batch_size,reader.rows,reader.cols,reader.nchs] )
+        if reader.loadflat:
+            reshaped_imgs = tf.reshape( feature_batch, [reader.batch_size,reader.rows,reader.cols,reader.nchs] )
+        else:
+            reshaped_imgs = feature_batch
 
         # summaries
         for plane in planes:
@@ -33,18 +37,30 @@ if __name__ == "__main__":
         for ibatch in range(0,reader.batch_size):
             scalar_sums.append( tf.scalar_summary( "label_batch_%d"%(ibatch), label_batch[ibatch] ) )
 
+
     # Merge summary ops
     summary_ops = tf.merge_all_summaries()
     print "Summary ops: ",summary_ops
-    
+
+    # initialize variables operation
+    init_op = tf.initialize_all_variables()
+
     # startup a tensorflow session
+    tfsession = tf.Session()
+
+    # define summary writer
     summ_dir = '/tmp/larcvio_ex_'+getpass.getuser()
     summary_writer = tf.train.SummaryWriter(summ_dir, graph=tfsession.graph)
 
+    # initialize variables
+    tfsession.run( init_op )
+
+    # start queue
+    reader.startQueue(tfsession, batch_size)
 
     # we 'run' for some time
-    time.sleep(1)
-    nsteps = 10
+    #time.sleep(1)
+    nsteps = 1000
     for i in range(0,nsteps):
         print "Step ",i
         time.sleep(1)

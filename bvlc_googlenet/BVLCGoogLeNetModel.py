@@ -3,7 +3,8 @@ import numpy as np
 
 
 class BVLCGoogLeNetModel:
-    def __init__( self, image_batch_node, labels_batch_node, img_shape, num_classes, mode='test', scopename="bvlc_GoogLeNet", caffe_weightfile='', tf_weightfile='' ):
+    def __init__( self, image_batch_node, labels_batch_node, img_shape, num_classes, 
+                  mode='test', scopename="bvlc_GoogLeNet", caffe_weightfile='', tf_weightfile='', ub=False):
         self.image_batch_node = image_batch_node
         self.labels_batch_node = labels_batch_node
         if mode not in ['test','train']:
@@ -12,6 +13,7 @@ class BVLCGoogLeNetModel:
         self.img_shape = img_shape
         self.nclasses = num_classes
         assert len(self.img_shape)==3 # HWC
+        self.ub = ub
 
         self.net_data = None
         if caffe_weightfile != '':
@@ -269,6 +271,7 @@ class BVLCGoogLeNetModel:
 
             # pool4
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'SAME'
+            if self.ub: padding = 'VALID' # hack
             maxpool4 = tf.nn.max_pool(incept4e, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool4_3x3_s2')
             print "Pool4: ",maxpool4.get_shape().as_list(),"padding=",self._checkpadding( incept4e, maxpool4, s_h, s_w )
 
@@ -304,9 +307,12 @@ class BVLCGoogLeNetModel:
             loss1_conv = self._conv_layer( loss1_pool, "loss1_conv", k_h, k_w, 128, s_h, s_w, padding=padding, group=1 )
 
             # check if size of stored weights array matches size here
-            use_netdata_loss1_fc = False            
+            use_netdata_loss1_fc = False
+            lossname = "loss"
+            if self.ub:
+                lossname = "uBloss"
             if self.net_data is not None:
-                stored_shapew = list(self.net_data["loss1_fc"]["weights"].shape)
+                stored_shapew = list(self.net_data[lossname+"1_fc"]["weights"].shape)
                 net_shapew = [int(np.prod(loss1_conv.get_shape()[1:])),1024]
                 if stored_shapew==net_shapew:
                     print "size of stored 'loss_fc1' weights (",stored_shapew,") matches network (",net_shapew,"). use stored weights."
@@ -315,14 +321,14 @@ class BVLCGoogLeNetModel:
                     print "size of stored 'loss_fc1' weights (",stored_shapew,") does not match network (",net_shapew,"). do not use stored weights."
 
             # loss1 fc
-            loss1_fc = self._fc_layer( loss1_conv, "loss1_fc", 1024, use_netdata_loss1_fc )
+            loss1_fc = self._fc_layer( loss1_conv, lossname+"1_fc", 1024, use_netdata_loss1_fc )
 
             # loss1 dropout
             keep_prob = 0.7
-            loss1_dropout = tf.nn.dropout( loss1_fc, keep_prob, name="loss1_drop_fc" )
+            loss1_dropout = tf.nn.dropout( loss1_fc, keep_prob, name=lossname+"1_drop_fc" )
 
             # loss1 classifier
-            loss1_classifier = self._fc_layer( loss1_dropout, "loss1_classifier", 1000, use_netdata_loss1_fc )
+            loss1_classifier = self._fc_layer( loss1_dropout, lossname+"1_classifier", self.nclasses, use_netdata_loss1_fc )
 
             # FC2 from incept4d
 
@@ -337,7 +343,7 @@ class BVLCGoogLeNetModel:
             # check if size of stored weights array matches size here
             use_netdata_loss2_fc = False            
             if self.net_data is not None:
-                stored_shapew = list(self.net_data["loss2_fc"]["weights"].shape)
+                stored_shapew = list(self.net_data[lossname+"2_fc"]["weights"].shape)
                 net_shapew = [int(np.prod(loss2_conv.get_shape()[1:])),1024]
                 if stored_shapew==net_shapew:
                     print "size of stored 'loss2_fc' weights (",stored_shapew,") matches network (",net_shapew,"). use stored weights."
@@ -346,22 +352,22 @@ class BVLCGoogLeNetModel:
                     print "size of stored 'loss2_fc' weights (",stored_shapew,") does not match network (",net_shapew,"). do not use stored weights."
 
             # loss2 fc
-            loss2_fc = self._fc_layer( loss2_conv, "loss2_fc", 1024, use_netdata_loss2_fc )
+            loss2_fc = self._fc_layer( loss2_conv, lossname+"2_fc", 1024, use_netdata_loss2_fc )
 
             # loss2 dropout
             keep_prob = 0.7
-            loss2_dropout = tf.nn.dropout( loss2_fc, keep_prob, name="loss2_drop_fc" )
+            loss2_dropout = tf.nn.dropout( loss2_fc, keep_prob, name=lossname+"2_drop_fc" )
             
             # loss2 classifier
-            loss2_classifier = self._fc_layer( loss2_dropout, "loss2_classifier", 1000, use_netdata_loss2_fc )
+            loss2_classifier = self._fc_layer( loss2_dropout, lossname+"2_classifier", self.nclasses, use_netdata_loss2_fc )
             
 
             # FC 3 from dropout5
             # check if size of stored weights array matches size here 
             use_netdata_loss3_classifier = False
             if self.net_data is not None:
-                stored_shapew = list(self.net_data["loss3_classifier"]["weights"].shape)
-                net_shapew = [int(np.prod(dropout5.get_shape()[1:])),1000]
+                stored_shapew = list(self.net_data[lossname+"3_classifier"]["weights"].shape)
+                net_shapew = [int(np.prod(dropout5.get_shape()[1:])),self.nclasses]
                 if stored_shapew==net_shapew:
                     print "size of stored 'loss3_classifier' weights (",stored_shapew,") matches network (",net_shapew,"). use stored weights."
                     use_netdata_loss3_classifier = True
@@ -369,7 +375,7 @@ class BVLCGoogLeNetModel:
                     print "size of stored 'loss3_classifier' weights (",stored_shapew,") does not match network (",net_shapew,"). do not use stored weights."
 
             # loss3 classifier
-            loss3_classifier = self._fc_layer( dropout5, "loss3_classifier", 1000, use_netdata_loss3_classifier )
+            loss3_classifier = self._fc_layer( dropout5, lossname+"3_classifier", self.nclasses, use_netdata_loss3_classifier )
                 
 
             # check. we should have all used stored FC layer weights, or none at all
