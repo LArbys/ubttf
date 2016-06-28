@@ -38,6 +38,27 @@ class BVLCGoogLeNetModel:
         pad_h = (ishape[1] - oshape[1]*s_h)/2
         pad_w = (ishape[2] - oshape[2]*s_w)/2
         return [pad_h,pad_w]
+
+    def _get_padding_type(self,kernel_params, input, output):
+        '''Translates Caffe's numeric padding to one of ('SAME', 'VALID').
+        Caffe supports arbitrary padding values, while TensorFlow only
+        supports 'SAME' and 'VALID' modes. So, not all Caffe paddings
+        can be translated to TensorFlow. There are some subtleties to
+        how the padding edge-cases are handled. These are described here:
+        https://github.com/Yangqing/caffe2/blob/master/caffe2/proto/caffe2_legacy.proto
+        '''
+        k_h, k_w, s_h, s_w, p_h, p_w = kernel_params
+        input_shape = input.get_shape().as_list()
+        output_shape = output.get_shape().as_list()
+        s_o_h = np.ceil(input_shape[1] / float(s_h))
+        s_o_w = np.ceil(input_shape[2] / float(s_w))
+        if (output_shape[1] == s_o_h) and (output_shape[2] == s_o_w):
+            return 'SAME'
+        v_o_h = np.ceil((input_shape[1] - k_h + 1.0) / float(s_h))
+        v_o_w = np.ceil((input_shape[2] - k_w + 1.0) / float(s_w))
+        if (output_shape[1] == v_o_h) and (output_shape[2] == v_o_w):
+            return 'VALID'
+        return None
     
     def _conv_layer( self, input, varname, k_h, k_w, c_o, s_h, s_w,  padding="VALID", group=1):
         '''From https://github.com/ethereon/caffe-tensorflow
@@ -113,17 +134,20 @@ class BVLCGoogLeNetModel:
             # conv1/7x7_s2
             k_h = 7; k_w = 7; s_h = 2; s_w = 2; c_o = 64; padding = 'SAME'
             conv1 = self._conv_layer( input, "conv1_7x7_s2", k_h, k_w, c_o, s_h, s_w, padding=padding, group=1 )
-            print "Conv1: ",conv1.get_shape().as_list(),"padding=",self._checkpadding( input, conv1, s_h, s_w )
+            print "Conv1: ",conv1.get_shape().as_list(),"padding=",self._checkpadding( input, conv1, s_h, s_w ),
+            print self._get_padding_type( (k_h,k_w,s_h,s_w,3,3), input, conv1 ),"=",padding
 
             # pool1/3x3_s2
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'SAME'
             maxpool1 = tf.nn.max_pool(conv1, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool1_3x3_s2')
-            print "Pool1: ",maxpool1.get_shape().as_list()," padding=",self._checkpadding( conv1, maxpool1, s_h, s_w )
+            print "Pool1: ",maxpool1.get_shape().as_list()," padding=",self._checkpadding( conv1, maxpool1, s_h, s_w ),
+            print self._get_padding_type( (k_h,k_w,s_h,s_w,0,0), conv1, maxpool1 ),"=",padding
 
             #lrn1
             #lrn(2, 2e-05, 0.75, name='norm1')
-            radius = 5; alpha = 1e-04; beta = 0.75; bias = 1.0
-            lrn1 = tf.nn.local_response_normalization(maxpool1, depth_radius=radius, alpha=alpha, beta=beta, bias=bias)
+            #radius = 5; alpha = 1e-04; beta = 0.75; bias = 1.0
+            radius = 2; alpha = 2e-05; beta = 0.75; bias = 1.0
+            lrn1 = tf.nn.local_response_normalization(maxpool1, depth_radius=radius, alpha=alpha, beta=beta, bias=bias,name="lrn1")
             
             # conv2/3x3_reduce_s2
             k_h = 1; k_w = 1; s_h = 1; s_w = 1; c_o = 64; padding = 'SAME'
@@ -132,17 +156,20 @@ class BVLCGoogLeNetModel:
             # conv2/3x3
             k_h = 3; k_w = 3; s_h = 1; s_w = 1; c_o = 192; padding = 'SAME'
             conv2 = self._conv_layer( conv2r, "conv2_3x3", k_h, k_w, c_o, s_h, s_w, padding=padding, group=1 )
-            print "Conv 2: ",conv2.get_shape().as_list(),"padding=",self._checkpadding( conv2r, conv2, s_h, s_w )
+            print "Conv 2: ",conv2.get_shape().as_list(),"padding=",self._checkpadding( conv2r, conv2, s_h, s_w ),
+            print self._get_padding_type( (k_h,k_w,s_h,s_w,1,1), conv2r, conv2 ),"=",padding
             
 
             # lrn2
-            radius = 5; alpha = 1e-04; beta = 0.75; bias = 1.0
-            lrn2 = tf.nn.local_response_normalization(conv2, depth_radius=radius, alpha=alpha, beta=beta, bias=bias)
+            #radius = 5; alpha = 1e-04; beta = 0.75; bias = 1.0
+            radius = 2; alpha = 2e-05; beta = 0.75; bias = 1.0
+            lrn2 = tf.nn.local_response_normalization(conv2, depth_radius=radius, alpha=alpha, beta=beta, bias=bias,name="lrn2")
             
             # pool2/3x3_s2
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'SAME'
             maxpool2 = tf.nn.max_pool(lrn2, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool2_3x3_s2')
-            print "Pool2: ",maxpool2.get_shape().as_list(),"padding=",self._checkpadding( lrn2,maxpool2,s_h,s_w )
+            print "Pool2: ",maxpool2.get_shape().as_list(),"padding=",self._checkpadding( lrn2,maxpool2,s_h,s_w ),
+            print self._get_padding_type( (k_h,k_w,s_h,s_w,0,0), lrn2, maxpool2 ),"=",padding
 
         return maxpool2
 

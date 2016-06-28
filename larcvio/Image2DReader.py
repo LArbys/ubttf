@@ -49,7 +49,7 @@ class Image2DReader:
             outimg = np.zeros( (self.vecshape,), dtype=np.float32 )
             outimg = data
             outimg = np.transpose( outimg.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
-            outlabel = np.zeros( (1,), dtype=np.int32 )
+            outlabel = np.zeros( (1,), dtype=np.float32 )
             outlabel[0] = label.at(0)
             print "Ask process driver for batch",outlabel[0]
             self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg.flatten(),self.ph_label:outlabel[0]} )
@@ -66,8 +66,8 @@ class Image2DReader:
         # setup network
         with tf.name_scope('image2dreader'):
             self.ph_image = tf.placeholder(tf.float32, shape=[self.vecshape], name="Image")
-            self.ph_label = tf.placeholder(tf.int32, shape=[],name="Label")
-            self.example_queue = tf.FIFOQueue( capacity=3*self.batch_size, dtypes=[tf.float32, tf.int32], shapes=[[self.vecshape], []] )
+            self.ph_label = tf.placeholder(tf.float32, shape=[],name="Label")
+            self.example_queue = tf.FIFOQueue( capacity=3*self.batch_size, dtypes=[tf.float32, tf.float32], shapes=[[self.vecshape], []] )
             self.enqueue_op = self.example_queue.enqueue([self.ph_image, self.ph_label])
             self.image_batch, self.label_batch = self.example_queue.dequeue_many(self.batch_size)
 
