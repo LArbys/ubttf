@@ -1,3 +1,9 @@
+# BVLC GoogLeNet
+
+Implementation of GoogLeNet.  Written to take weights from caffe-trained BVLC GoogLeNet model. Also can take weights from a network fine-tuned to select neutrino events from MicroBooNE images.
+
+![Network](https://github.com/LArbys/ubttf/blob/master/bvlc_googlenet/screenshots/tensorboard_network.png)
+
 ## Tests
 
 ### On quail2.jpg
@@ -60,3 +66,4 @@ From tensorflow:
 
 Working example!  Fine-tuning network previously trained to separate UB event images.
 
+![Acc and Loss](https://github.com/LArbys/ubttf/blob/master/bvlc_googlenet/screenshots/tensorboard_loss_acc.png)
