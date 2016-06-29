@@ -55,3 +55,8 @@ From tensorflow:
     Top  3 : index= 17   jay  prob= 0.0155182
     Top  4 : index= 16   bulbul  prob= 0.00307126
 
+
+## Training
+
+Working example!  Fine-tuning network previously trained to separate UB event images.
+
