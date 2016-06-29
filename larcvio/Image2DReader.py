@@ -6,7 +6,7 @@ import threading
 
 class Image2DReader:
     """Class that provides image data to TensorFlow Models. Tailored to classificaion."""
-    def __init__(self,drivername,cfg,batch_size,filelist=[],loadflat=False):
+    def __init__(self,drivername,cfg,batch_size,nclasses,filelist=[],loadflat=False):
         """
         constructor
 
@@ -21,13 +21,15 @@ class Image2DReader:
         assert type(batch_size) is int
         self.loadflat = loadflat
         self.batch_size = batch_size
+        self.drivername = drivername
+        self.nclasses = nclasses
 
         # setup process driver
         self.config_file = cfg
-        filler_exists = larcv.ThreadFillerFactory.exist_filler(drivername)
+        filler_exists = larcv.ThreadFillerFactory.exist_filler(self.drivername)
         if not filler_exists:
-            print "Get Filler: ",drivername
-            self.proc = larcv.ThreadFillerFactory.get_filler(drivername)
+            print "Get Filler: ",self.drivername
+            self.proc = larcv.ThreadFillerFactory.get_filler(self.drivername)
             self.proc.configure(self.config_file)
         else:
             print "Filler Already Exists"
@@ -68,25 +70,25 @@ class Image2DReader:
             #outimg = np.transpose( outimg.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
             data = np.transpose( data.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
             outimg = data
-            outlabel = np.zeros( (1,), dtype=np.float32 )
-            outlabel[0] = label.at(0)
-            print "Ask process driver for batch",outlabel[0]
+            outlabel = np.zeros( (self.nclasses,), dtype=np.float32 )
+            outlabel[label.at(0)] = 1.0
+            #print "Ask process driver for batch",label.at(0)
             if self.loadflat:
-                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg.flatten(),self.ph_label:outlabel[0]} )
+                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_enqueue_image:outimg.flatten(),self.ph_enqueue_label:outlabel} )
             else:
-                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_image:outimg,self.ph_label:outlabel[0]} )                
+                self.tfsession.run( self.enqueue_op, feed_dict={self.ph_enqueue_image:outimg,self.ph_enqueue_label:outlabel} )                
 
     def defineSubNetwork(self):
 
         # setup network
-        with tf.name_scope('image2dreader'):
+        with tf.name_scope('image2dreader_'+self.drivername):
             if self.loadflat:
-                self.ph_image = tf.placeholder(tf.float32, shape=[self.vecshape], name="Image")
+                self.ph_enqueue_image = tf.placeholder(tf.float32, shape=[self.vecshape], name="Enqueue_Image_"+self.drivername)
             else:
-                self.ph_image = tf.placeholder(tf.float32, shape=[self.rows,self.cols,self.nchs], name="Image")
-            self.ph_label = tf.placeholder(tf.float32, shape=[],name="Label")
-            self.example_queue = tf.FIFOQueue( capacity=3*self.batch_size, dtypes=[tf.float32, tf.float32], shapes=[[self.rows,self.cols,self.nchs], []] )
-            self.enqueue_op = self.example_queue.enqueue([self.ph_image, self.ph_label])
+                self.ph_enqueue_image = tf.placeholder(tf.float32, shape=[self.rows,self.cols,self.nchs], name="Enqueue_Image_"+self.drivername)
+            self.ph_enqueue_label = tf.placeholder(tf.float32, shape=[self.nclasses],name="Enqueue_Label_"+self.drivername)
+            self.example_queue = tf.FIFOQueue( capacity=3*self.batch_size, dtypes=[tf.float32, tf.float32], shapes=[[self.rows,self.cols,self.nchs], [self.nclasses]] )
+            self.enqueue_op = self.example_queue.enqueue([self.ph_enqueue_image, self.ph_enqueue_label])
             self.image_batch, self.label_batch = self.example_queue.dequeue_many(self.batch_size)
 
     def startQueue( self, tfsession, batch_size ):
@@ -117,8 +119,8 @@ class Image2DReader:
 
     def get_image_shape(self,order='HWC'):
         if order=='HWC':
-            return (self.rows,self.cols,self.nchs)
+            return [self.rows,self.cols,self.nchs]
         elif order=='CHW':
-            return (self.nchs,self.rows,self.cols)
+            return [self.nchs,self.rows,self.cols]
         else:
             raise ValueError('order must be \'HWC\' or \'CHW\'')

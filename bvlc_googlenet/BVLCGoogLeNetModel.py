@@ -4,7 +4,7 @@ import numpy as np
 
 class BVLCGoogLeNetModel:
     def __init__( self, image_batch_node, labels_batch_node, img_shape, num_classes, 
-                  mode='test', scopename="bvlc_GoogLeNet", caffe_weightfile='', tf_weightfile='', ub=False):
+                  mode='test', scopename="bvlc_GoogLeNet", caffe_weightfile='', tf_weightfile='', ub=False,  weight_decay=0.0001 ):
         self.image_batch_node = image_batch_node
         self.labels_batch_node = labels_batch_node
         if mode not in ['test','train']:
@@ -14,6 +14,7 @@ class BVLCGoogLeNetModel:
         self.nclasses = num_classes
         assert len(self.img_shape)==3 # HWC
         self.ub = ub
+        self.weight_decay = weight_decay
 
         self.net_data = None
         if caffe_weightfile != '':
@@ -23,16 +24,34 @@ class BVLCGoogLeNetModel:
 
         self.out1, self.out2, self.out3 = self._defineCoreModel( self.image_batch_node, scopename )
 
-        with tf.name_scope( scopename ):
-            if self.mode=='test':
-                self.softmax1 = tf.nn.softmax(self.out1, name="softmaxprob")
-                self.softmax2 = tf.nn.softmax(self.out2, name="softmaxprob")
-                self.softmax3 = tf.nn.softmax(self.out3, name="softmaxprob")
-                print "Test Softmax shapes: ",self.softmax1.get_shape().as_list(),self.softmax2.get_shape().as_list(),self.softmax3.get_shape().as_list()
-            else:
-                self.loss1 = tf.nn.softmax_cross_entropy_with_logits( self.out1, self.labels_batch_node, "softmaxloss" )
-                self.loss2 = tf.nn.softmax_cross_entropy_with_logits( self.out2, self.labels_batch_node, "softmaxloss" )
-                self.loss3 = tf.nn.softmax_cross_entropy_with_logits( self.out3, self.labels_batch_node, "softmaxloss" )
+        # construct prob and loss nodes
+
+        with tf.name_scope( scopename+"_scores" ):
+            # for validation
+            with tf.variable_scope("loss_weights"):
+                self.weight1 = tf.constant( 0.3/1.6, name="weight1" )
+                self.weight2 = tf.constant( 0.3/1.6, name="weight2" )
+                self.weight3 = tf.constant( 1.0/1.6, name="weight3" )
+
+            with tf.name_scope( "prob" ):
+                self.softmax1 = tf.nn.softmax(self.out1, name="softmaxprob1")
+                self.softmax2 = tf.nn.softmax(self.out2, name="softmaxprob2")
+                self.softmax3 = tf.nn.softmax(self.out3, name="softmaxprob3")
+                self.softmax1w = tf.mul( self.softmax1, self.weight1, name="smw1" )
+                self.softmax2w = tf.mul( self.softmax2, self.weight2, name="smw2" )
+                self.softmax3w = tf.mul( self.softmax3, self.weight3, name="smw3" )
+                self.prob = tf.add_n( [self.softmax1w,self.softmax2w,self.softmax3w], name="add_prob" )
+                
+            # for training
+            with tf.name_scope( "loss" ):
+                self.loss1 = tf.nn.softmax_cross_entropy_with_logits( self.out1, self.labels_batch_node, name="softmaxloss1" )
+                self.loss2 = tf.nn.softmax_cross_entropy_with_logits( self.out2, self.labels_batch_node, name="softmaxloss2" )
+                self.loss3 = tf.nn.softmax_cross_entropy_with_logits( self.out3, self.labels_batch_node, name="softmaxloss3" )
+                self.loss1w = tf.mul( self.loss1, self.weight1, name="lw1" )
+                self.loss2w = tf.mul( self.loss2, self.weight2, name="lw2" )
+                self.loss3w = tf.mul( self.loss3, self.weight3, name="lw3" )
+                self.loss = tf.add_n( [self.loss1w,self.loss2w,self.loss3w], name="add_loss" )
+                self.aveloss = tf.reduce_mean( self.loss, name="ave_loss")
 
     def _checkpadding( self, ilayer, olayer, s_h, s_w ):
         ishape = ilayer.get_shape().as_list()
@@ -90,8 +109,8 @@ class BVLCGoogLeNetModel:
             shapew = list( self.net_data[varname]["weights"].shape )
             shapeb = list( self.net_data[varname]["biases"].shape )
         #print "Conv layer, ",varname, ": shapes=",shapew, shapeb
-
-        with tf.variable_scope(varname):
+        
+        with tf.variable_scope(varname, regularizer=tf.contrib.layers.l2_regularizer(self.weight_decay)):
             convW = tf.get_variable( "weights", shape=shapew, initializer=initerw )
             convB = tf.get_variable( "bias", shape=shapeb, initializer=initerb )
 
@@ -115,7 +134,7 @@ class BVLCGoogLeNetModel:
         return  conv_relu
 
     def _fc_layer( self, input, varname, noutput, use_netdata_fc ):
-        with tf.variable_scope( varname ):
+        with tf.variable_scope( varname, regularizer=tf.contrib.layers.l2_regularizer(self.weight_decay) ):
             shapew = [ int(np.prod( input.get_shape()[1:] )), noutput ]
             shapeb = [ noutput ]
             initw  = tf.random_normal_initializer()

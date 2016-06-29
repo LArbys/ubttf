@@ -10,20 +10,20 @@ if __name__ == "__main__":
     num_classes = 1000
     batch_size = 4    
 
-
     img_size = [224,224,3]
     vecshape = int( np.prod( img_size ) )
 
-    image_node = tf.placeholder( tf.float32, [1,vecshape] )
-    label_node = tf.placeholder( tf.int32, [] )
+    image_node = tf.placeholder( tf.float32, [batch_size]+img_size )
+    label_node = tf.placeholder( tf.float32, [batch_size,num_classes] )
 
     caffe_weightfile = 'bvlc_googlenet.npy'
-    #caffe_weightfile = ''
+    #caffe_weightfile = 'ub3plane_googlenet.npy'
 
-    net_data = np.load(caffe_weightfile).item()
-    print net_data.keys()
+    #net_data = np.load(caffe_weightfile).item()
+    #print net_data.keys()
 
-    model = BVLCGoogLeNetModel( image_node, label_node, img_size, num_classes, caffe_weightfile=caffe_weightfile )
+    model = BVLCGoogLeNetModel( image_node, label_node, img_size, num_classes, 
+                                caffe_weightfile=caffe_weightfile, ub=False )
 
     tfsession = tf.Session()
     
