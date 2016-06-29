@@ -14,8 +14,8 @@ if __name__ == "__main__":
     # LOAD SAMPLE IMAGES
     # we use OpenCV which uses BGR, convert to RGB
     # cv2.cvtColor(srcBGR, cv2.COLOR_BGR2RGB) # why!!!
-    img_dog   = cv2.cvtColor( cv2.imread( "dog.png", cv2.IMREAD_COLOR ), cv2.COLOR_BGR2RGB )
-    img_quail = cv2.cvtColor( cv2.imread( "quail227.JPEG", cv2.IMREAD_COLOR ), cv2.COLOR_BGR2RGB )
+    img_dog   = cv2.cvtColor( cv2.imread( "../dog.png", cv2.IMREAD_COLOR ), cv2.COLOR_BGR2RGB )
+    img_quail = cv2.cvtColor( cv2.imread( "../quail227.JPEG", cv2.IMREAD_COLOR ), cv2.COLOR_BGR2RGB )
 
     # Load mean pixel values for each channel , RGB
     mean_rgb = np.array( [104, 117, 123], dtype=np.float32 ) # from https://github.com/BVLC/caffe/wiki/Models-accuracy-on-ImageNet-2012-val
@@ -39,7 +39,8 @@ if __name__ == "__main__":
 
     # Load BVLC AlexNet Model
     caffe_weightfile = 'bvlc_alexnet.npy'
-    model = BVLCAlexNetModel( image_input_node, label_input_node, input_dog.shape, num_classes, caffe_weightfile=caffe_weightfile )
+    with tf.device("/cpu:0"):
+        model = BVLCAlexNetModel( image_input_node, label_input_node, input_dog.shape, num_classes, caffe_weightfile=caffe_weightfile )
     
     # Make operation to initialize variables
     init_op = tf.initialize_all_variables()

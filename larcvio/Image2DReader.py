@@ -69,10 +69,10 @@ class Image2DReader:
             #outimg = data # copy
             #outimg = np.transpose( outimg.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
             data = np.transpose( data.reshape( (self.nchs, self.rows, self.cols) ), (1,2,0) ) # change from CHW to HWC (more natural for TF)
-            outimg = data
+            outimg = data*100.0
             outlabel = np.zeros( (self.nclasses,), dtype=np.float32 )
-            outlabel[label.at(0)] = 1.0
-            #print "Ask process driver for batch",label.at(0)
+            outlabel[int(np.rint(label.at(0)))] = 1.0 
+            #print "Ask process driver for batch",outlabel
             if self.loadflat:
                 self.tfsession.run( self.enqueue_op, feed_dict={self.ph_enqueue_image:outimg.flatten(),self.ph_enqueue_label:outlabel} )
             else:

@@ -13,9 +13,9 @@ if __name__ == "__main__":
 
     # setup iageread network
 
-    train_batch_size = 16
-    test_batch_size  = 16
-    num_classes = 2
+    train_batch_size = 10
+    test_batch_size  = 10
+    num_classes = 3
     steps_per_validation_test = 20
 
     # Create Process Driver Readers. One for training set, one for validation set.
@@ -30,26 +30,48 @@ if __name__ == "__main__":
     label_input_ph = tf.placeholder( tf.float32, [train_reader.batch_size,num_classes], "label_input" )
 
     # Load BVLC GoogLeNet Model
-    caffe_weightfile = 'ub3plane_googlenet.npy'
-    model = BVLCGoogLeNetModel( image_input_ph, label_input_ph, image_shape, num_classes, 
-                                caffe_weightfile=caffe_weightfile, ub=True )
-
+    #caffe_weightfile = 'ub3plane_googlenet.npy'
+    #caffe_weightfile = 'bvlc_googlenet.npy'
+    caffe_weightfile = ''
+    with tf.device("/gpu:1"):
+        model = BVLCGoogLeNetModel( image_input_ph, label_input_ph, image_shape, num_classes, 
+                                    caffe_weightfile=caffe_weightfile, ub=True, weight_decay=0.0 )
+    
     # Training operations
-    learning_rate = 1.0e-8
+    init_learning_rate = 1.0e-3
     rms_decay = 0.9
     momentum=0.0
     epsilon=1e-10
     use_locking=False
     opt_name='RMSProp'
-    optimizer = tf.train.RMSPropOptimizer( learning_rate, decay=rms_decay, momentum=momentum, epsilon=epsilon,use_locking=use_locking,name=opt_name )
-    global_step = tf.Variable(0, name='global_step', trainable=False)
-    train_op = optimizer.minimize(model.aveloss, global_step=global_step)
 
-    # we want accuracies of training sample and testing sample
-    with tf.name_scope("monitor"):
-        correct_prediction = tf.equal(tf.argmax(model.prob,1), tf.argmax(label_input_ph,1),"prediction")
-        # take mean of the batch
-        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32),name="accuracy")
+    with tf.device("/gpu:1"):
+        learning_rate = tf.placeholder(tf.float32, [])
+        #optimizer = tf.train.RMSPropOptimizer( learning_rate, decay=rms_decay, momentum=momentum, epsilon=epsilon,use_locking=use_locking,name=opt_name )
+        optimizer = tf.train.AdamOptimizer(learning_rate)
+        global_step = tf.Variable(0, name='global_step', trainable=False)
+        train_op = optimizer.minimize(model.aveloss, global_step=global_step)
+
+        # we want accuracies of training sample and testing sample
+        with tf.name_scope("monitor"):
+            correct_prediction = tf.equal(tf.argmax(model.prob,1), tf.argmax(label_input_ph,1),"prediction")
+            # take mean of the batch
+            accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32),name="accuracy")
+
+    # list of all variables
+    all_vars = tf.all_variables()
+    train_vars = tf.trainable_variables()
+    for var in train_vars:
+        print var.name
+        tf.histogram_summary( var.name, var )
+
+    # get gradients for all variables
+    with tf.device("/gpu:1"):
+        grads = tf.gradients(model.aveloss, tf.trainable_variables())
+        grads = list(zip(grads, tf.trainable_variables()))
+    for grad, var in grads:
+        if grad is not None and var is not None:
+            tf.histogram_summary(var.name + '/gradient', grad)
     
     # we want to monitor the loss, scores, accuracy
     tf.scalar_summary( "sum_ave_loss", model.aveloss )
@@ -64,7 +86,7 @@ if __name__ == "__main__":
     print "Summary ops: ",summary_ops
     
     # Start session
-    tfsession = tf.Session()
+    tfsession = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False))
 
     # define summary writer
     train_summ_dir = '/tmp/train_googlenet_'+getpass.getuser()
@@ -86,7 +108,7 @@ if __name__ == "__main__":
     #print "initial conv1b values: ",conv1b_init
     #print model.net_data["conv1"][1]
 
-    nsteps = 100
+    nsteps = 1000
     
     start_forward = time.time()
     iter_time     = time.time()
@@ -96,9 +118,14 @@ if __name__ == "__main__":
         images, labels = tfsession.run( [train_reader.get_image_batch_node(),train_reader.get_label_batch_node()] )
         
         # training pass
-        tstep, summary, train_loss, train_acc = tfsession.run( [train_op, summary_ops,model.aveloss,accuracy], 
-                                                               feed_dict={image_input_ph:images, label_input_ph:labels} )
-        print "[TRAIN] : step %d : loss %.3e : acc=%.2f"%(istep,train_loss,train_acc)
+        lr = init_learning_rate*pow(10,-(float(int(istep/500))))
+
+        _, summary, train_loss, train_acc, prob, loss3 = tfsession.run( [train_op, summary_ops,model.aveloss,accuracy,model.prob,model.loss3], 
+                                                                 feed_dict={image_input_ph:images, label_input_ph:labels, learning_rate:lr} )
+        print "[TRAIN] : step %d : loss %.3e : acc=%.2f : lr=%.3e"%(istep,train_loss,train_acc, lr)
+        print prob
+        print labels
+        print loss3
         train_summary_writer.add_summary(summary, istep)
         
         if istep%steps_per_validation_test==0:
@@ -110,6 +137,6 @@ if __name__ == "__main__":
             end_forward = time.time()
             end_iter    = time.time()
             print "[TEST] : step %d : loss %.3e : acc %.2f "%(istep, test_loss, test_acc)
-            print "[TIME] : %.2f secs to this checkpoint, %.2f sec total"%(istep,end_iter-iter_time,end_forward-start_forward)
+            print "[TIME] : %.2f secs to this checkpoint, %.2f sec total"%(end_iter-iter_time,end_forward-start_forward)
             iter_time = time.time()
     

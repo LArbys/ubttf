@@ -17,7 +17,7 @@ if __name__ == "__main__":
     num_classes = 2
 
     # Create Process Driver Reader
-    reader = Image2DReader("train","filler.cfg",batch_size)
+    reader = Image2DReader("train","filler.cfg",batch_size, num_classes)
     
     image_input_node = reader.get_image_batch_node()
     label_input_node = reader.get_label_batch_node()

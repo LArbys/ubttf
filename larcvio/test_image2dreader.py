@@ -11,9 +11,11 @@ if __name__ == "__main__":
 
     planes = [2]
     batch_size = 4
+    num_classes = 2
 
     # Create Process Driver Reader
-    reader = Image2DReader("train","filler.cfg",batch_size)
+    with tf.device("/gpu:1"):
+        reader = Image2DReader("train","filler.cfg",batch_size, num_classes)
     
 
     feature_batch = reader.get_image_batch_node()
@@ -22,20 +24,21 @@ if __name__ == "__main__":
     print "Image Batch Shape: ",[reader.batch_size,reader.cols,reader.rows,reader.nchs]
 
     # Image dump network
-    with tf.name_scope('image_dump'):
+    with tf.device("/gpu:1"):
+        with tf.name_scope('image_dump'):
 
-        # reshape
-        if reader.loadflat:
-            reshaped_imgs = tf.reshape( feature_batch, [reader.batch_size,reader.rows,reader.cols,reader.nchs] )
-        else:
-            reshaped_imgs = feature_batch
+            # reshape
+            if reader.loadflat:
+                reshaped_imgs = tf.reshape( feature_batch, [reader.batch_size,reader.rows,reader.cols,reader.nchs] )
+            else:
+                reshaped_imgs = feature_batch
 
-        # summaries
-        for plane in planes:
-            tf.image_summary( 'plane%d_img'%(plane), reshaped_imgs, max_images=reader.batch_size )
-        scalar_sums = []
-        for ibatch in range(0,reader.batch_size):
-            scalar_sums.append( tf.scalar_summary( "label_batch_%d"%(ibatch), label_batch[ibatch] ) )
+            # summaries
+            for plane in planes:
+                tf.image_summary( 'plane%d_img'%(plane), reshaped_imgs, max_images=reader.batch_size )
+            #scalar_sums = []
+            #for ibatch in range(0,reader.batch_size):
+            #    scalar_sums.append( tf.scalar_summary( "label_batch_%d"%(ibatch), label_batch[ibatch][1] ) )
 
 
     # Merge summary ops
@@ -46,7 +49,7 @@ if __name__ == "__main__":
     init_op = tf.initialize_all_variables()
 
     # startup a tensorflow session
-    tfsession = tf.Session()
+    tfsession = tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False))
 
     # define summary writer
     summ_dir = '/tmp/larcvio_ex_'+getpass.getuser()
