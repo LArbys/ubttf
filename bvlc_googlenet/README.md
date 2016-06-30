@@ -64,6 +64,6 @@ From tensorflow:
 
 ## Training
 
-Working example!  Fine-tuning network previously trained to separate UB event images.
+While script goes through the motions, traning doesn't seem to quite work.  Tests with trying to overfit 20 event 3-plane sample refuses to work.  There seems to be a vanishing gradient problem.
 
 ![Acc and Loss](https://github.com/LArbys/ubttf/blob/master/bvlc_googlenet/screenshots/tensorboard_loss_acc.png)
