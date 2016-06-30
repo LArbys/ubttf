@@ -15,8 +15,12 @@ if __name__ == "__main__":
 
     train_batch_size = 10
     test_batch_size  = 10
-    num_classes = 3
+    num_classes = 2
     steps_per_validation_test = 20
+    histogram_features = True
+    histogram_weights = False
+    histogram_gradients = True
+    
 
     # Create Process Driver Readers. One for training set, one for validation set.
     train_reader = Image2DReader("train","filler.cfg",train_batch_size, num_classes)
@@ -35,10 +39,10 @@ if __name__ == "__main__":
     caffe_weightfile = ''
     with tf.device("/gpu:1"):
         model = BVLCGoogLeNetModel( image_input_ph, label_input_ph, image_shape, num_classes, 
-                                    caffe_weightfile=caffe_weightfile, ub=True, weight_decay=0.0 )
+                                    caffe_weightfile=caffe_weightfile, ub=True, weight_decay=0.0001, histogram=histogram_features )
     
     # Training operations
-    init_learning_rate = 1.0e-3
+    init_learning_rate = 1.0e-4
     rms_decay = 0.9
     momentum=0.0
     epsilon=1e-10
@@ -61,17 +65,19 @@ if __name__ == "__main__":
     # list of all variables
     all_vars = tf.all_variables()
     train_vars = tf.trainable_variables()
-    for var in train_vars:
-        print var.name
-        tf.histogram_summary( var.name, var )
+    if histogram_weights:
+        for var in train_vars:
+            print var.name
+            tf.histogram_summary( var.name, var )
 
     # get gradients for all variables
-    with tf.device("/gpu:1"):
-        grads = tf.gradients(model.aveloss, tf.trainable_variables())
-        grads = list(zip(grads, tf.trainable_variables()))
-    for grad, var in grads:
-        if grad is not None and var is not None:
-            tf.histogram_summary(var.name + '/gradient', grad)
+    if histogram_gradients:
+        with tf.device("/gpu:1"):
+            grads = tf.gradients(model.aveloss, tf.trainable_variables())
+            grads = list(zip(grads, tf.trainable_variables()))
+        for grad, var in grads:
+            if grad is not None and var is not None:
+                tf.histogram_summary(var.name + '/gradient', grad)
     
     # we want to monitor the loss, scores, accuracy
     tf.scalar_summary( "sum_ave_loss", model.aveloss )
@@ -120,18 +126,24 @@ if __name__ == "__main__":
         # training pass
         lr = init_learning_rate*pow(10,-(float(int(istep/500))))
 
-        _, summary, train_loss, train_acc, prob, loss3 = tfsession.run( [train_op, summary_ops,model.aveloss,accuracy,model.prob,model.loss3], 
-                                                                 feed_dict={image_input_ph:images, label_input_ph:labels, learning_rate:lr} )
+        # FOR DEBUG
+        #_, summary, train_loss, train_acc, prob, loss3, out3 = tfsession.run( [train_op, summary_ops,model.aveloss,accuracy,model.prob,model.loss3,model.out3], 
+        #                                                         feed_dict={image_input_ph:images, label_input_ph:labels, 
+        #                                                                    learning_rate:lr,model.dropout5_keepprob:0.4} )
+        #print prob
+        #print labels
+        #print out3
+        #print loss3
+        _, summary, train_loss, train_acc = tfsession.run( [train_op, summary_ops,model.aveloss,accuracy], 
+                                                           feed_dict={image_input_ph:images, label_input_ph:labels, 
+                                                                      learning_rate:lr,model.dropout5_keepprob:0.4} )
         print "[TRAIN] : step %d : loss %.3e : acc=%.2f : lr=%.3e"%(istep,train_loss,train_acc, lr)
-        print prob
-        print labels
-        print loss3
         train_summary_writer.add_summary(summary, istep)
         
         if istep%steps_per_validation_test==0:
             test_images, test_labels = tfsession.run( [test_reader.get_image_batch_node(), test_reader.get_label_batch_node()] )
             test_loss, test_acc, test_sum = tfsession.run( [model.aveloss, accuracy,summary_ops], 
-                                                           feed_dict={image_input_ph:test_images,label_input_ph:test_labels} )
+                                                           feed_dict={image_input_ph:test_images,label_input_ph:test_labels,model.dropout5_keepprob:1.0} )
             test_summary_writer.add_summary( test_sum, istep )
             
             end_forward = time.time()

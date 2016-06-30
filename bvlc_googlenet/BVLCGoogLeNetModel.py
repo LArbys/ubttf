@@ -14,6 +14,7 @@ class BVLCGoogLeNetModel:
         assert len(self.img_shape)==3 # HWC
         self.ub = ub
         self.weight_decay = weight_decay
+        self.histogram = histogram
 
         self.net_data = None
         if caffe_weightfile != '':
@@ -166,7 +167,7 @@ class BVLCGoogLeNetModel:
             conv1 = self._conv_layer( input, "conv1_7x7_s2", k_h, k_w, c_o, s_h, s_w, padding=padding, group=1 )
             print "Conv1: ",conv1.get_shape().as_list(),"padding=",self._checkpadding( input, conv1, s_h, s_w ),
             print self._get_padding_type( (k_h,k_w,s_h,s_w,3,3), input, conv1 ),"=",padding
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "stem/conv1", conv1 )
 
             # pool1/3x3_s2
@@ -191,7 +192,7 @@ class BVLCGoogLeNetModel:
             conv2 = self._conv_layer( conv2r, "conv2_3x3", k_h, k_w, c_o, s_h, s_w, padding=padding, group=1 )
             print "Conv 2: ",conv2.get_shape().as_list(),"padding=",self._checkpadding( conv2r, conv2, s_h, s_w ),
             print self._get_padding_type( (k_h,k_w,s_h,s_w,1,1), conv2r, conv2 ),"=",padding
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "stem/conv2", conv2 )
 
 
@@ -200,7 +201,7 @@ class BVLCGoogLeNetModel:
             radius = 2; alpha = 2e-05; beta = 0.75; bias = 1.0
             with tf.device('/cpu:0'):
                 lrn2 = tf.nn.local_response_normalization(conv2, depth_radius=radius, alpha=alpha, beta=beta, bias=bias,name="lrn2")
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "stem/lrn2", lrn2 )
 
             # pool2/3x3_s2
@@ -208,7 +209,7 @@ class BVLCGoogLeNetModel:
             maxpool2 = tf.nn.max_pool(lrn2, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool2_3x3_s2')
             print "Pool2: ",maxpool2.get_shape().as_list(),"padding=",self._checkpadding( lrn2,maxpool2,s_h,s_w ),
             print self._get_padding_type( (k_h,k_w,s_h,s_w,0,0), lrn2, maxpool2 ),"=",padding
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "stem/pool2", maxpool2 )
 
         return maxpool2
@@ -282,7 +283,7 @@ class BVLCGoogLeNetModel:
             i3bchannels = { "1x1":128, "3x3reduce":128, "3x3":192, "5x5reduce":32, "5x5":96, "poolproj":64 }
             incept3b = self._inception( "inception_3b", incept3a, i3bchannels )
             print "Inception 3b: ",incept3b.get_shape().as_list()," padding=",self._checkpadding( stem_out, incept3b, 1, 1 )
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "core/incept3b", incept3b )
 
             # pool 3
@@ -309,7 +310,7 @@ class BVLCGoogLeNetModel:
             # inception 4E
             i4echannels = { "1x1":256, "3x3reduce":160, "3x3":320, "5x5reduce":32, "5x5":128, "poolproj":128 }
             incept4e = self._inception( "inception_4e", incept4d, i4echannels )
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "core/incept4e", incept4e )
 
             # pool4
@@ -327,7 +328,7 @@ class BVLCGoogLeNetModel:
             i5bchannels = { "1x1":384, "3x3reduce":192, "3x3":384, "5x5reduce":48, "5x5":128, "poolproj":128 }
             incept5b = self._inception( "inception_5b", incept5a, i5bchannels )
             print "inception 5b: ",incept5b.get_shape().as_list(),"padding=",self._checkpadding( incept5a, incept5b, 1, 1 )
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "core/incept5b", incept5b )
 
             # pool 5
@@ -341,7 +342,7 @@ class BVLCGoogLeNetModel:
             keep_prob = 0.4
             self.dropout5_keepprob = tf.placeholder( tf.float32, [], "dropout_keepprob" )
             dropout5  = tf.nn.dropout( pool5, self.dropout5_keepprob, name="pool5_drop_7x7_s1")
-            if histogram:
+            if self.histogram:
                 tf.histogram_summary( "core/dropout5", dropout5 )
 
         # GoogeLeNet has multiple outputs
@@ -381,7 +382,7 @@ class BVLCGoogLeNetModel:
 
                 # loss1 classifier
                 loss1_classifier = self._fc_layer( loss1_dropout, lossname+"1_classifier", self.nclasses, use_netdata_loss1_fc, relu=False )
-                if histogram:
+                if self.histogram:
                     tf.histogram_summary( "fc/loss1_classifier", loss1_classifier )
 
             with tf.variable_scope( "FC2" ):
@@ -415,7 +416,7 @@ class BVLCGoogLeNetModel:
 
                 # loss2 classifier
                 loss2_classifier = self._fc_layer( loss2_dropout, lossname+"2_classifier", self.nclasses, use_netdata_loss2_fc, relu=False )
-                if histogram:
+                if self.histogram:
                     tf.histogram_summary( "fc/loss2_classifier", loss2_classifier )
 
             with tf.variable_scope( "FC3" ):
@@ -433,7 +434,7 @@ class BVLCGoogLeNetModel:
 
                 # loss3 classifier
                 loss3_classifier = self._fc_layer( dropout5, lossname+"3_classifier", self.nclasses, use_netdata_loss3_classifier, relu=False )
-                if histogram:
+                if self.histogram:
                     tf.histogram_summary( "fc/loss3_classifier", loss3_classifier )
 
                 # check. we should have all used stored FC layer weights, or none at all
