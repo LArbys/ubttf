@@ -5,7 +5,7 @@ import numpy as np
 class BVLCGoogLeNetModel:
     def __init__( self, image_batch_node, labels_batch_node, img_shape, num_classes, 
                   scopename="bvlc_GoogLeNet", caffe_weightfile='', tf_weightfile='', ub=False,  weight_decay=0.0001, 
-                  histogram_weights=False):
+                  histogram=False):
 
         self.image_batch_node = image_batch_node
         self.labels_batch_node = labels_batch_node
@@ -97,7 +97,8 @@ class BVLCGoogLeNetModel:
 
         if self.net_data is None and self.tf_data is None:
             # from scratch initializer
-            initerw = tf.contrib.layers.xavier_initializer_conv2d()
+            #initerw = tf.contrib.layers.xavier_initializer_conv2d()
+            initerw = tf.contrib.layers.xavier_initializer(uniform=True)
             initerb = tf.constant_initializer(0.2)
             shapew = [k_h,k_w,c_i/group,c_o/group]
             shapeb = [c_o/group]
@@ -135,7 +136,7 @@ class BVLCGoogLeNetModel:
         conv_relu = tf.nn.relu(conv_bias,name=varname+"_relu")
         return  conv_relu
 
-    def _fc_layer( self, input, varname, noutput, use_netdata_fc ):
+    def _fc_layer( self, input, varname, noutput, use_netdata_fc, relu=True ):
         with tf.variable_scope( varname, regularizer=tf.contrib.layers.l2_regularizer(self.weight_decay) ):
             shapew = [ int(np.prod( input.get_shape()[1:] )), noutput ]
             shapeb = [ noutput ]
@@ -145,11 +146,14 @@ class BVLCGoogLeNetModel:
                 initb = lambda shape,dtype : self.net_data[varname]["biases"]
             else:
                 print varname," initializing"
-                initw  = tf.contrib.layers.xavier_initializer()
-                initb  = tf.constant_initializer(0.0)                
+                initw  = tf.contrib.layers.xavier_initializer(uniform=True)
+                initb  = tf.constant_initializer(0.1)
             fcw = tf.get_variable("weights", shape=shapew, initializer=initw)
             fcb = tf.get_variable("bias",shape=shapeb, initializer=initb)
-            fc  = tf.nn.relu_layer(tf.reshape(input, [-1, int(np.prod(input.get_shape()[1:]))], name=varname+"_reshape" ), fcw, fcb, name=varname+"_relu")
+            if relu:
+                fc  = tf.nn.relu_layer(tf.reshape(input, [-1, int(np.prod(input.get_shape()[1:]))], name=varname+"_unroll" ), fcw, fcb, name=varname+"_relu")
+            else:
+                fc = tf.nn.xw_plus_b( tf.reshape(input, [-1, int(np.prod(input.get_shape()[1:]))], name=varname+"_unroll" ), fcw, fcb, name=varname+"_wxb" )
         return fc
 
     def _stem( self, input ):
@@ -162,6 +166,8 @@ class BVLCGoogLeNetModel:
             conv1 = self._conv_layer( input, "conv1_7x7_s2", k_h, k_w, c_o, s_h, s_w, padding=padding, group=1 )
             print "Conv1: ",conv1.get_shape().as_list(),"padding=",self._checkpadding( input, conv1, s_h, s_w ),
             print self._get_padding_type( (k_h,k_w,s_h,s_w,3,3), input, conv1 ),"=",padding
+            if histogram:
+                tf.histogram_summary( "stem/conv1", conv1 )
 
             # pool1/3x3_s2
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'SAME'
@@ -185,6 +191,8 @@ class BVLCGoogLeNetModel:
             conv2 = self._conv_layer( conv2r, "conv2_3x3", k_h, k_w, c_o, s_h, s_w, padding=padding, group=1 )
             print "Conv 2: ",conv2.get_shape().as_list(),"padding=",self._checkpadding( conv2r, conv2, s_h, s_w ),
             print self._get_padding_type( (k_h,k_w,s_h,s_w,1,1), conv2r, conv2 ),"=",padding
+            if histogram:
+                tf.histogram_summary( "stem/conv2", conv2 )
 
 
             # lrn2
@@ -192,12 +200,16 @@ class BVLCGoogLeNetModel:
             radius = 2; alpha = 2e-05; beta = 0.75; bias = 1.0
             with tf.device('/cpu:0'):
                 lrn2 = tf.nn.local_response_normalization(conv2, depth_radius=radius, alpha=alpha, beta=beta, bias=bias,name="lrn2")
+            if histogram:
+                tf.histogram_summary( "stem/lrn2", lrn2 )
 
             # pool2/3x3_s2
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'SAME'
             maxpool2 = tf.nn.max_pool(lrn2, ksize=[1, k_h, k_w, 1], strides=[1, s_h, s_w, 1], padding=padding, name='pool2_3x3_s2')
             print "Pool2: ",maxpool2.get_shape().as_list(),"padding=",self._checkpadding( lrn2,maxpool2,s_h,s_w ),
             print self._get_padding_type( (k_h,k_w,s_h,s_w,0,0), lrn2, maxpool2 ),"=",padding
+            if histogram:
+                tf.histogram_summary( "stem/pool2", maxpool2 )
 
         return maxpool2
 
@@ -270,6 +282,8 @@ class BVLCGoogLeNetModel:
             i3bchannels = { "1x1":128, "3x3reduce":128, "3x3":192, "5x5reduce":32, "5x5":96, "poolproj":64 }
             incept3b = self._inception( "inception_3b", incept3a, i3bchannels )
             print "Inception 3b: ",incept3b.get_shape().as_list()," padding=",self._checkpadding( stem_out, incept3b, 1, 1 )
+            if histogram:
+                tf.histogram_summary( "core/incept3b", incept3b )
 
             # pool 3
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'SAME'
@@ -295,6 +309,8 @@ class BVLCGoogLeNetModel:
             # inception 4E
             i4echannels = { "1x1":256, "3x3reduce":160, "3x3":320, "5x5reduce":32, "5x5":128, "poolproj":128 }
             incept4e = self._inception( "inception_4e", incept4d, i4echannels )
+            if histogram:
+                tf.histogram_summary( "core/incept4e", incept4e )
 
             # pool4
             k_h = 3; k_w = 3; s_h = 2; s_w = 2; padding = 'SAME'
@@ -310,7 +326,9 @@ class BVLCGoogLeNetModel:
             # inception 5B
             i5bchannels = { "1x1":384, "3x3reduce":192, "3x3":384, "5x5reduce":48, "5x5":128, "poolproj":128 }
             incept5b = self._inception( "inception_5b", incept5a, i5bchannels )
-            print "inception 5B: ",incept5b.get_shape().as_list(),"padding=",self._checkpadding( incept5a, incept5b, 1, 1 )
+            print "inception 5b: ",incept5b.get_shape().as_list(),"padding=",self._checkpadding( incept5a, incept5b, 1, 1 )
+            if histogram:
+                tf.histogram_summary( "core/incept5b", incept5b )
 
             # pool 5
             k_h = 7; k_w = 7; s_h = 1; s_w = 1; padding = 'VALID'
@@ -323,6 +341,8 @@ class BVLCGoogLeNetModel:
             keep_prob = 0.4
             self.dropout5_keepprob = tf.placeholder( tf.float32, [], "dropout_keepprob" )
             dropout5  = tf.nn.dropout( pool5, self.dropout5_keepprob, name="pool5_drop_7x7_s1")
+            if histogram:
+                tf.histogram_summary( "core/dropout5", dropout5 )
 
         # GoogeLeNet has multiple outputs
         with tf.variable_scope( scopename+"_classifiers" ):
@@ -360,7 +380,9 @@ class BVLCGoogLeNetModel:
                 loss1_dropout = tf.nn.dropout( loss1_fc, keep_prob, name=lossname+"1_drop_fc" )
 
                 # loss1 classifier
-                loss1_classifier = self._fc_layer( loss1_dropout, lossname+"1_classifier", self.nclasses, use_netdata_loss1_fc )
+                loss1_classifier = self._fc_layer( loss1_dropout, lossname+"1_classifier", self.nclasses, use_netdata_loss1_fc, relu=False )
+                if histogram:
+                    tf.histogram_summary( "fc/loss1_classifier", loss1_classifier )
 
             with tf.variable_scope( "FC2" ):
                 # FC2 from incept4d
@@ -392,7 +414,9 @@ class BVLCGoogLeNetModel:
                 loss2_dropout = tf.nn.dropout( loss2_fc, keep_prob, name=lossname+"2_drop_fc" )
 
                 # loss2 classifier
-                loss2_classifier = self._fc_layer( loss2_dropout, lossname+"2_classifier", self.nclasses, use_netdata_loss2_fc )
+                loss2_classifier = self._fc_layer( loss2_dropout, lossname+"2_classifier", self.nclasses, use_netdata_loss2_fc, relu=False )
+                if histogram:
+                    tf.histogram_summary( "fc/loss2_classifier", loss2_classifier )
 
             with tf.variable_scope( "FC3" ):
                 # FC 3 from dropout5
@@ -408,8 +432,9 @@ class BVLCGoogLeNetModel:
                         print "size of stored 'loss3_classifier' weights (",stored_shapew,") does not match network (",net_shapew,"). do not use stored weights."
 
                 # loss3 classifier
-                loss3_classifier = self._fc_layer( dropout5, lossname+"3_classifier", self.nclasses, use_netdata_loss3_classifier )
-
+                loss3_classifier = self._fc_layer( dropout5, lossname+"3_classifier", self.nclasses, use_netdata_loss3_classifier, relu=False )
+                if histogram:
+                    tf.histogram_summary( "fc/loss3_classifier", loss3_classifier )
 
                 # check. we should have all used stored FC layer weights, or none at all
                 if ( ( use_netdata_loss1_fc and use_netdata_loss2_fc and use_netdata_loss3_classifier ) 
