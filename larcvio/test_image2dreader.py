@@ -10,13 +10,11 @@ import getpass
 if __name__ == "__main__":
 
     planes = [2]
-    batch_size = 4
+    batch_size = 24
     num_classes = 2
 
     # Create Process Driver Reader
-    with tf.device("/gpu:1"):
-        reader = Image2DReader("train","filler.cfg",batch_size, num_classes)
-    
+    reader = Image2DReader("train","filler.cfg",batch_size, num_classes, capacity=batch_size*6)
 
     feature_batch = reader.get_image_batch_node()
     label_batch   = reader.get_label_batch_node()
